@@ -2,13 +2,13 @@
 
 import type React from "react"
 
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
-import { UploadCloud, FileVideo, Download, CheckCircle2, Loader2, AlertCircle } from "lucide-react"
+import { UploadCloud, FileVideo, Download, CheckCircle2, Loader2, AlertCircle, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type Status = "idle" | "uploading" | "processing" | "done"
+type Status = "idle" | "uploading" | "processing" | "done" | "already-protected"
 
 const ACCEPTED = ["video/mp4", "video/quicktime", "video/x-msvideo", "video/x-matroska"]
 const ACCEPTED_EXT = [".mp4", ".mov", ".avi", ".mkv"]
@@ -16,7 +16,7 @@ const MAX_BYTES = 2 * 1024 * 1024 * 1024 // 2GB
 
 const PROCESSING_STEPS = ["Watermarking", "Generating fingerprint", "Finalizing"]
 
-export function VideoUploader({ onDownloaded }: { onDownloaded: () => void }) {
+export function VideoUploader({ onReveal }: { onReveal: () => void }) {
   const [status, setStatus] = useState<Status>("idle")
   const [progress, setProgress] = useState(0)
   const [step, setStep] = useState(0)
@@ -24,6 +24,11 @@ export function VideoUploader({ onDownloaded }: { onDownloaded: () => void }) {
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Reveal the registration panel as soon as a protected copy is available
+  useEffect(() => {
+    if (status === "already-protected") onReveal()
+  }, [status, onReveal])
 
   const validate = (file: File): string | null => {
     const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
@@ -41,16 +46,22 @@ export function VideoUploader({ onDownloaded }: { onDownloaded: () => void }) {
     }
     setError(null)
     setFileName(file.name)
-    setStatus("uploading")
     setProgress(0)
     setStep(0)
+
+    // A previously fingerprinted file skips the whole pipeline
+    if (file.name.toLowerCase().includes("protected")) {
+      setStatus("already-protected")
+      return
+    }
+
+    setStatus("uploading")
 
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
           setStatus("processing")
-          // Step through the processing pipeline
           PROCESSING_STEPS.forEach((_, i) => setTimeout(() => setStep(i), i * 900))
           setTimeout(() => setStatus("done"), PROCESSING_STEPS.length * 900)
           return 100
@@ -84,6 +95,8 @@ export function VideoUploader({ onDownloaded }: { onDownloaded: () => void }) {
     if (inputRef.current) inputRef.current.value = ""
   }
 
+  const isProtected = status === "already-protected"
+
   return (
     <div className="flex flex-col gap-4">
       <div
@@ -103,6 +116,7 @@ export function VideoUploader({ onDownloaded }: { onDownloaded: () => void }) {
           "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center transition-colors",
           status === "idle" && "cursor-pointer hover:border-muted-foreground/50 hover:bg-muted/50",
           isDragging && "border-primary/60 bg-muted/60",
+          isProtected && "border-solid border-teal-500/40 bg-teal-500/5",
         )}
       >
         <input
@@ -127,9 +141,16 @@ export function VideoUploader({ onDownloaded }: { onDownloaded: () => void }) {
 
         {status !== "idle" && (
           <div className="flex w-full items-center gap-3 text-left">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <div
+              className={cn(
+                "flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted",
+                isProtected && "bg-teal-500/15",
+              )}
+            >
               {status === "done" ? (
                 <CheckCircle2 className="size-5 text-emerald-400" aria-hidden="true" />
+              ) : isProtected ? (
+                <ShieldCheck className="size-5 text-teal-400" aria-hidden="true" />
               ) : status === "processing" ? (
                 <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
               ) : (
@@ -142,6 +163,7 @@ export function VideoUploader({ onDownloaded }: { onDownloaded: () => void }) {
                 {status === "uploading" && `Uploading… ${progress}%`}
                 {status === "processing" && `${PROCESSING_STEPS[step]}…`}
                 {status === "done" && "Your watermarked video is ready"}
+                {isProtected && "Existing protection found"}
               </p>
             </div>
           </div>
@@ -155,17 +177,39 @@ export function VideoUploader({ onDownloaded }: { onDownloaded: () => void }) {
         </p>
       )}
 
+      {/* Teal info banner replaces the progress flow for already-protected files */}
+      {isProtected && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-teal-500/30 bg-teal-500/10 px-4 py-3">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-400" aria-hidden="true" />
+          <p className="text-sm text-teal-200">
+            This video was already protected by TRACE — your watermarked copy is ready.
+          </p>
+        </div>
+      )}
+
       {(status === "uploading" || status === "processing") && (
         <Progress value={status === "processing" ? 100 : progress} className="h-1.5" />
       )}
 
       {status === "done" && (
         <div className="flex items-center gap-2">
-          <Button className="flex-1 gap-2" onClick={onDownloaded}>
+          <Button className="flex-1 gap-2" onClick={onReveal}>
             <Download className="size-4" aria-hidden="true" />
             Download watermarked video
           </Button>
           <Button variant="outline" onClick={reset}>
+            New upload
+          </Button>
+        </div>
+      )}
+
+      {isProtected && (
+        <div className="flex items-center gap-2">
+          <Button className="flex-1 gap-2" variant="outline">
+            <Download className="size-4" aria-hidden="true" />
+            Download watermarked copy
+          </Button>
+          <Button variant="ghost" onClick={reset}>
             New upload
           </Button>
         </div>

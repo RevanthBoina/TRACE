@@ -18,7 +18,7 @@ export default function Home() {
           </p>
         </header>
 
-        <VideoUploader onDownloaded={() => setRegistered(true)} />
+        <VideoUploader onReveal={() => setRegistered(true)} />
 
         {registered && (
           <>

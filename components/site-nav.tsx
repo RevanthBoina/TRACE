@@ -10,8 +10,8 @@ const links = [
   { href: "/dashboard", label: "Dashboard" },
 ]
 
-// Unread match alerts surfaced in the nav
-const ALERT_COUNT = 6
+// Whether there are unread infringement matches
+const HAS_UNREAD_MATCHES = true
 
 export function SiteNav() {
   const pathname = usePathname()
@@ -39,14 +39,12 @@ export function SiteNav() {
           ))}
           <Link
             href="/dashboard"
-            aria-label={`${ALERT_COUNT} match alerts`}
+            aria-label={HAS_UNREAD_MATCHES ? "Unread infringement matches" : "Notifications"}
             className="relative ml-1 rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground"
           >
             <Bell className="size-4" aria-hidden="true" />
-            {ALERT_COUNT > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-4 text-white">
-                {ALERT_COUNT}
-              </span>
+            {HAS_UNREAD_MATCHES && (
+              <span className="absolute right-1 top-1 size-2 rounded-full bg-red-500 ring-2 ring-background" />
             )}
           </Link>
         </div>
