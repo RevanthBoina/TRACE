@@ -1,16 +1,24 @@
+import { VideoUploader } from "@/components/video-uploader"
+import { RegistrationPanel } from "@/components/registration-panel"
+
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center font-sans">
-      <main className="flex w-full max-w-3xl flex-col items-center gap-8 px-6 py-16 text-center sm:items-start sm:text-left">
-        <div className="flex flex-col gap-4">
-          <h1 className="text-4xl font-bold tracking-tight">
-            TRACE
-          </h1>
-          <p className="max-w-md text-lg text-muted-foreground">
-            To get started, send a prompt or modify this page directly.
+    <main className="flex min-h-screen items-center justify-center px-4 py-12 font-sans">
+      <div className="flex w-full max-w-md flex-col gap-8">
+        <header className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Trace</span>
+          <h1 className="text-balance text-2xl font-semibold tracking-tight text-foreground">Upload a video</h1>
+          <p className="text-pretty text-sm text-muted-foreground">
+            Drop a file to upload and process it, then download the result.
           </p>
-        </div>
-      </main>
-    </div>
-  );
+        </header>
+
+        <VideoUploader />
+
+        <div className="h-px bg-border" aria-hidden="true" />
+
+        <RegistrationPanel />
+      </div>
+    </main>
+  )
 }
