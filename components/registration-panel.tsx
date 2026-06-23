@@ -54,6 +54,9 @@ export function RegistrationPanel() {
           <SelectContent>
             <SelectItem value="youtube">YouTube</SelectItem>
             <SelectItem value="instagram">Instagram</SelectItem>
+            <SelectItem value="linkedin">LinkedIn</SelectItem>
+            <SelectItem value="tiktok">TikTok</SelectItem>
+            <SelectItem value="other">Other</SelectItem>
           </SelectContent>
         </Select>
         <Button type="submit" className="flex-1">
