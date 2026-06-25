@@ -11,12 +11,20 @@
 |-----------|---------|--------|-------------|
 | Compute | Oracle VM | AWS EC2 t3.micro | Oracle free tier reducing June 15 2026 |
 | Object Storage | Oracle Object Storage | AWS S3 | Already configured with credentials |
-| Database | PostgreSQL on Oracle VM | Neon.tech (testing) → AWS RDS (production) | Fastest way to unblock testing |
+| Database | PostgreSQL on Oracle VM | AWS RDS PostgreSQL | EC2 can access via VPC |
 | Watermarking | VideoSeal full install | VideoSeal TorchScript JIT (y_256b_img.jit) | No pip install needed, just PyTorch |
 | Frontend | Next.js on Vercel | Next.js on Vercel | Unchanged |
 | Background Jobs | Celery + Redis | Celery + Redis | Not yet implemented |
 
 ---
+
+
+## AWS RDS (Production Database)
+- Engine: PostgreSQL 15
+- Instance: trace-db (t3.micro, free tier)
+- Region: eu-north-1 (same as EC2)
+- Connection: Via VPC, no public access needed
+- DATABASE_URL format: `postgresql://user:pass@rds-endpoint:5432/trace`
 
 ## S3 Buckets
 - `trace-upload-temp` — raw video uploads (deleted after watermarking)
@@ -32,7 +40,7 @@ Keys:
 - `AWS_REGION` = us-east-1
 - `S3_UPLOAD_BUCKET` = trace-upload-temp
 - `S3_OUTPUT_BUCKET` = trace-watermarked-out
-- `DATABASE_URL` = Neon.tech PostgreSQL URL
+- `DATABASE_URL` = AWS RDS PostgreSQL URL (see below)
 - `RESEND_API_KEY`
 
 ---
@@ -117,24 +125,27 @@ TRACE/
 
 ---
 
-## EC2 Instance
+## EC2 Instance [ACTIVE]
+- Instance ID: i-06bf6b1ce3d638fb5 (trace-backend)
 - Type: t3.micro (AWS free tier, 6 months)
 - OS: Ubuntu 22.04 LTS
-- Region: us-east-1
+- Region: eu-north-1
+- Public IP: 51.20.185.26
+- Public DNS: ec2-51-20-185-26.eu-north-1.compute.amazonaws.com
 - Ports open: 22 (SSH), 80 (HTTP), 443 (HTTPS), 8000 (FastAPI)
-- Status: Launched — not yet configured
-- **Next action:** SSH in, install dependencies, deploy FastAPI backend
+- Status: Running ✅
+- **TODO:** SSH in, install dependencies, deploy FastAPI backend
 
 ---
 
 ## Immediate Next Steps (In Order)
-1. Wire WatermarkWorker into `/upload` endpoint in `main.py`
-2. Add Celery + Redis for background processing
-3. Add signed download URL endpoint
-4. SSH into EC2 → deploy FastAPI backend
-5. Update Next.js CORS to point at EC2 public IP
-6. Delete `app/api/` — Next.js API routes are dead code
-7. Switch DATABASE_URL from Neon to AWS RDS on EC2
+1. ~~Wire WatermarkWorker into `/upload` endpoint~~ ✅ DONE
+2. ~~Add Celery + Redis for background processing~~ ✅ DONE (FastAPI BackgroundTasks)
+3. ~~Delete `app/api/` — Next.js API routes are dead code~~ ✅ DONE
+4. Update CORS to allow Vercel frontend domain
+5. SSH into EC2 → deploy FastAPI backend
+6. Create AWS RDS PostgreSQL instance
+7. Update DATABASE_URL to point to RDS
 
 ---
 

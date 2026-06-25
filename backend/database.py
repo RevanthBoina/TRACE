@@ -32,12 +32,16 @@ class Upload(Base):
     error_message: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
 
-# Use SQLite for local development, PostgreSQL for production
-engine = create_engine(
-    settings.DATABASE_URL, 
-    pool_pre_ping=True,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
-)
+# Use SQLite fallback for local dev, PostgreSQL (RDS) for production
+if settings.DATABASE_URL and "postgresql" in settings.DATABASE_URL:
+    # Production: PostgreSQL on RDS
+    engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+else:
+    # Development: SQLite fallback
+    import os
+    db_path = os.path.join(os.path.dirname(__file__), "..", "trace.db")
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
