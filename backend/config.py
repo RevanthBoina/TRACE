@@ -12,10 +12,11 @@ class Settings(BaseSettings):
     S3_UPLOAD_BUCKET: str = "trace-upload-temp"
     S3_OUTPUT_BUCKET: str = "trace-watermarked-out"
     DATABASE_URL: str | None = None  # PostgreSQL on RDS in production
+    RESEND_API_KEY: str | None = None
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {
+        "extra": "ignore",  # Allow extra env vars
+    }
 
 
 settings = Settings()

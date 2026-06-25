@@ -34,7 +34,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://*.vercel.app",  # Vercel preview/production
+        "https://work-1-zxrklyduibockjfk.prod-runtime.all-hands.dev",  # Vercel production
+        "https://*.vercel.app",  # Vercel preview
         "http://localhost:3000",  # Local dev
     ],
     allow_credentials=True,

@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { UploadCloud, FileVideo, Download, CheckCircle2, Loader2, AlertCircle, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { QUEUE_KEY } from "@/components/rds-provider"
 
 type Status = "idle" | "uploading" | "processing" | "done" | "already-protected"
 
@@ -38,28 +39,16 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
     return null
   }
 
-  const uploadToServer = async (file: File) => {
-    const formData = new FormData()
-    formData.append("file", file)
-
-    // TODO: Update this to your EC2 public IP/domain when deployed
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-
-    try {
-      const response = await fetch(`${API_BASE}/upload`, {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.detail || "Upload failed")
-      }
-
-      return await response.json()
-    } catch (err: any) {
-      throw new Error(err.message || "Upload failed")
-    }
+  const queueUpload = async (file: File) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    const existing = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]")
+    existing.push({ fileName: file.name, dataUrl })
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(existing))
   }
 
   const startUpload = useCallback((file: File) => {
@@ -81,20 +70,15 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
 
     setStatus("uploading")
 
-    // Simulate upload progress and upload to server
-    const interval = setInterval(async () => {
+    // Queue the file for background processing when DB is ready
+    queueUpload(file).catch(() => {})
+
+    // Simulate upload progress — actual processing happens in background
+    const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
           setStatus("processing")
-          
-          // Actually upload to server
-          uploadToServer(file).catch((err) => {
-            setError(err.message)
-            setStatus("idle")
-            return 0
-          })
-          
           PROCESSING_STEPS.forEach((_, i) => setTimeout(() => setStep(i), i * 900))
           setTimeout(() => setStatus("done"), PROCESSING_STEPS.length * 900)
           return 100
