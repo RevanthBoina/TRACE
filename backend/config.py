@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str | None = None
     AWS_REGION: str = "us-east-1"
     S3_UPLOAD_BUCKET: str | None = None
+    S3_OUTPUT_BUCKET: str | None = None
     DATABASE_URL: str = "postgresql://localhost:5432/trace"
 
     class Config:
