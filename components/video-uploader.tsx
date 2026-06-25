@@ -42,15 +42,18 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
     const formData = new FormData()
     formData.append("file", file)
 
+    // TODO: Update this to your EC2 public IP/domain when deployed
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
     try {
-      const response = await fetch("/api/upload", {
+      const response = await fetch(`${API_BASE}/upload`, {
         method: "POST",
         body: formData,
       })
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || "Upload failed")
+        throw new Error(data.detail || "Upload failed")
       }
 
       return await response.json()

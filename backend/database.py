@@ -29,6 +29,7 @@ class Upload(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     status: Mapped[str] = mapped_column(String(50), default="pending")
+    error_message: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
 
 # Use SQLite for local development, PostgreSQL for production
@@ -59,15 +60,32 @@ def check_duplicate(db, file_hash: str) -> Upload | None:
     return db.query(Upload).filter(Upload.file_hash == file_hash).first()
 
 
-def save_upload(db, file_hash: str, s3_key: str, filename: str) -> Upload:
+def save_upload(db, file_hash: str, s3_key: str, filename: str, status: str = "uploaded") -> Upload:
     """Save a new upload record to the database."""
     upload = Upload(
         file_hash=file_hash,
         s3_key=s3_key,
         filename=filename,
-        status="uploaded"
+        status=status
     )
     db.add(upload)
     db.commit()
     db.refresh(upload)
     return upload
+
+
+def get_upload_by_id(db, upload_id: str) -> Upload | None:
+    """Get an upload record by ID."""
+    return db.query(Upload).filter(Upload.id == upload_id).first()
+
+
+def update_upload_status(db, upload_id: str, status: str, output_key: str = None, error: str = None):
+    """Update the status of an upload record."""
+    upload = get_upload_by_id(db, upload_id)
+    if upload:
+        upload.status = status
+        if output_key:
+            upload.s3_key = output_key
+        if error:
+            upload.error_message = error
+        db.commit()
