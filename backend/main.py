@@ -10,13 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.config import settings
-from backend.database import get_db, check_duplicate, save_upload, Upload
+from backend.database import get_db, check_duplicate, save_upload, Upload, init_db
 from sqlalchemy.orm import Session
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
+    # Initialize database tables on startup
+    init_db()
     yield
 
 

@@ -3,8 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import create_engine, String, DateTime, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import create_engine, String, DateTime, func, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from backend.config import settings
@@ -20,8 +19,8 @@ class Upload(Base):
     
     __tablename__ = "uploads"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
     file_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     s3_key: Mapped[str] = mapped_column(String(512))
@@ -32,8 +31,18 @@ class Upload(Base):
     status: Mapped[str] = mapped_column(String(50), default="pending")
 
 
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+# Use SQLite for local development, PostgreSQL for production
+engine = create_engine(
+    settings.DATABASE_URL, 
+    pool_pre_ping=True,
+    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def init_db():
+    """Initialize the database tables."""
+    Base.metadata.create_all(bind=engine)
 
 
 def get_db():
