@@ -38,6 +38,27 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
     return null
   }
 
+  const uploadToServer = async (file: File) => {
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Upload failed")
+      }
+
+      return await response.json()
+    } catch (err: any) {
+      throw new Error(err.message || "Upload failed")
+    }
+  }
+
   const startUpload = useCallback((file: File) => {
     const validationError = validate(file)
     if (validationError) {
@@ -57,11 +78,20 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
 
     setStatus("uploading")
 
-    const interval = setInterval(() => {
+    // Simulate upload progress and upload to server
+    const interval = setInterval(async () => {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
           setStatus("processing")
+          
+          // Actually upload to server
+          uploadToServer(file).catch((err) => {
+            setError(err.message)
+            setStatus("idle")
+            return 0
+          })
+          
           PROCESSING_STEPS.forEach((_, i) => setTimeout(() => setStep(i), i * 900))
           setTimeout(() => setStatus("done"), PROCESSING_STEPS.length * 900)
           return 100
