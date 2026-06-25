@@ -4,12 +4,16 @@ VideoSeal Watermark Embedding Worker
 This worker handles watermark embedding in videos using VideoSeal model.
 VideoSeal is a state-of-the-art video watermarking model that embeds invisible
 watermarks into video frames for content authentication and tracing.
+
+Model: y_256b_img.jit (256-bit invisible watermark for images/videos)
 """
 
 import io
+import os
 import uuid
 import hashlib
 import asyncio
+import tempfile
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
@@ -18,25 +22,22 @@ import torch
 import boto3
 from botocore.exceptions import ClientError
 
-# Optional VideoSeal imports - will be installed separately
-try:
-    from videoseal import VideoSeal
-    from videoseal.utils import load_weights
-    VIDEOSEAL_AVAILABLE = True
-except ImportError:
-    VIDEOSEAL_AVAILABLE = False
-    print("Warning: VideoSeal not installed. Run: pip install videoseal")
+# VideoSeal model loading (using TorchScript .jit model)
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "ckpts", "y_256b_img.jit")
+VIDEO_SEAL_MODEL = None
 
 
 class WatermarkWorker:
     """
-    Worker for embedding watermarks into videos using VideoSeal.
+    Worker for embedding watermarks into videos using VideoSeal (TorchScript model).
     
     VideoSeal is designed for:
     - Invisible watermark embedding (robust to compression)
     - Content authentication
     - Source tracing
     - Copyright protection
+    
+    Model: y_256b_img.jit (256-bit invisible watermark)
     """
     
     def __init__(
@@ -58,7 +59,7 @@ class WatermarkWorker:
             aws_region: AWS region (e.g., 'us-east-1')
             input_bucket: S3 bucket for input videos
             output_bucket: S3 bucket for watermarked videos
-            model_path: Path to VideoSeal model weights (optional)
+            model_path: Path to VideoSeal TorchScript model (defaults to local ckpts)
             device: Device to run model on ('cuda' or 'cpu')
         """
         self.s3_client = boto3.client(
@@ -70,7 +71,9 @@ class WatermarkWorker:
         
         self.input_bucket = input_bucket
         self.output_bucket = output_bucket
-        self.model_path = model_path
+        
+        # Use provided model path or default to local ckpts
+        self.model_path = model_path or MODEL_PATH
         
         # Set device (prefer CUDA if available)
         if device:
@@ -81,18 +84,23 @@ class WatermarkWorker:
         self.model = None
     
     def _load_model(self):
-        """Load VideoSeal model."""
-        if not VIDEOSEAL_AVAILABLE:
-            raise RuntimeError(
-                "VideoSeal not installed. Install with: pip install videoseal"
-            )
+        """Load VideoSeal TorchScript model."""
+        global VIDEO_SEAL_MODEL
         
-        if self.model is None:
-            print(f"Loading VideoSeal model on {self.device}...")
-            self.model = VideoSeal(weights=self.model_path)
-            self.model = self.model.to(self.device)
-            self.model.eval()
-            print("VideoSeal model loaded successfully")
+        if VIDEO_SEAL_MODEL is None:
+            print(f"Loading VideoSeal model from: {self.model_path}")
+            if not os.path.exists(self.model_path):
+                raise FileNotFoundError(
+                    f"Model not found at {self.model_path}. "
+                    "Download from: https://dl.fbaipublicfiles.com/videoseal/y_256b_img.jit"
+                )
+            
+            VIDEO_SEAL_MODEL = torch.jit.load(self.model_path, map_location=self.device)
+            VIDEO_SEAL_MODEL.eval()
+            print(f"VideoSeal model loaded on {self.device}")
+        
+        self.model = VIDEO_SEAL_MODEL
+        return self.model
     
     def _download_video(self, s3_key: str) -> bytes:
         """Download video from S3."""
@@ -114,6 +122,34 @@ class WatermarkWorker:
         )
         return s3_key
     
+    def _message_to_bits(self, message: str, num_bits: int = 256) -> torch.Tensor:
+        """
+        Convert message string to binary tensor.
+        
+        Args:
+            message: Message string to encode
+            num_bits: Number of bits (256 for y_256b model)
+            
+        Returns:
+            Binary tensor of shape (num_bits,)
+        """
+        # Hash the message to get consistent length
+        message_hash = hashlib.sha256(message.encode()).digest()
+        
+        # Convert to binary
+        bits = []
+        for byte in message_hash:
+            for i in range(8):
+                bits.append((byte >> (7 - i)) & 1)
+        
+        # Pad or truncate to num_bits
+        if len(bits) < num_bits:
+            bits = bits + [0] * (num_bits - len(bits))
+        else:
+            bits = bits[:num_bits]
+        
+        return torch.tensor(bits, dtype=torch.float32)
+    
     def generate_watermark(self, message: str, job_id: str) -> str:
         """
         Generate watermark message from content.
@@ -129,37 +165,66 @@ class WatermarkWorker:
         watermark = f"TRACE|{message}|{job_id}"
         return watermark
     
-    async def embed_watermark(
-        self,
-        video_path: str,
-        watermark_message: str
-    ) -> str:
+    def embed_watermark_frame(self, frame: torch.Tensor, watermark_bits: torch.Tensor) -> torch.Tensor:
         """
-        Embed watermark into video.
+        Embed watermark bits into a single video frame.
         
         Args:
-            video_path: Path to input video (or S3 key)
-            watermark_message: Message to embed
+            frame: Video frame tensor (C, H, W)
+            watermark_bits: Watermark bits tensor (256,)
             
         Returns:
-            Path to watermarked video
+            Watermarked frame tensor
         """
-        self._load_model()
+        model = self._load_model()
         
-        # In a real implementation, this would:
-        # 1. Load video frames
-        # 2. Process through VideoSeal model
-        # 3. Embed watermark into frames
-        # 4. Save watermarked video
+        # Ensure frame is in correct format
+        if frame.dim() == 3:
+            frame = frame.unsqueeze(0)  # Add batch dimension
         
-        output_path = video_path.replace('/input/', '/output/')
+        if watermark_bits.dim() == 1:
+            watermark_bits = watermark_bits.unsqueeze(0)  # Add batch dimension
         
-        # Placeholder for actual VideoSeal embedding
-        # video_frames = self._load_video_frames(video_path)
-        # watermarked_frames = self.model.encode(video_frames, watermark_message)
-        # self._save_video(watermarked_frames, output_path)
+        # Run inference
+        with torch.no_grad():
+            watermarked_frame = model(frame, watermark_bits)
         
-        return output_path
+        return watermarked_frame.squeeze(0)
+    
+    async def embed_watermark_video(
+        self,
+        video_data: bytes,
+        watermark_message: str,
+        job_id: str
+    ) -> bytes:
+        """
+        Embed watermark into video bytes.
+        
+        Args:
+            video_data: Raw video bytes
+            watermark_message: Message to embed
+            job_id: Job UUID for tracking
+            
+        Returns:
+            Watermarked video bytes
+        """
+        # Convert message to watermark bits
+        watermark_bits = self._message_to_bits(watermark_message)
+        watermark_bits = watermark_bits.to(self.device)
+        
+        # TODO: Implement actual video processing
+        # For now, this is a placeholder that returns the original video
+        # Real implementation would:
+        # 1. Decode video frames
+        # 2. Process each frame with VideoSeal
+        # 3. Re-encode to video format
+        
+        print(f"Watermark embedding ready for job {job_id}")
+        print(f"Watermark message: {watermark_message}")
+        print(f"Watermark bits: {watermark_bits[:8].cpu().numpy()}...")  # Show first 8 bits
+        
+        # Placeholder: return original video
+        return video_data
     
     async def process_video(
         self,
@@ -194,9 +259,10 @@ class WatermarkWorker:
             # Generate output key
             output_key = f"watermarked/{job_id}/{Path(s3_key).name}"
             
-            # Embed watermark (placeholder - actual implementation would use VideoSeal)
-            # For now, we'll just pass through the video
-            watermarked_data = video_data  # TODO: Apply VideoSeal embedding
+            # Embed watermark
+            watermarked_data = await self.embed_watermark_video(
+                video_data, watermark_message, job_id
+            )
             
             # Upload result
             self._upload_video(watermarked_data, output_key)
@@ -244,14 +310,15 @@ async def run_worker():
         output_bucket=settings.S3_OUTPUT_BUCKET
     )
     
-    # Example: Process a video
-    result = await worker.process_video(
-        job_id=str(uuid.uuid4()),
-        s3_key="uploads/test.mp4",
-        watermark_message="user_123"
-    )
+    # Test model loading
+    model = worker._load_model()
+    print(f"Model loaded: {type(model)}")
     
-    print(f"Result: {result}")
+    # Test message to bits conversion
+    bits = worker._message_to_bits("test_message", 256)
+    print(f"Watermark bits shape: {bits.shape}")
+    
+    print("\nWorker ready!")
 
 
 if __name__ == "__main__":
