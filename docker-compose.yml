@@ -1,0 +1,57 @@
+# TRACE Backend - Docker Compose for 24/7 deployment
+version: '3.8'
+
+services:
+  # FastAPI Backend
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_UPLOAD_BUCKET=${S3_UPLOAD_BUCKET}
+      - S3_OUTPUT_BUCKET=${S3_OUTPUT_BUCKET}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - trace_key_pem=${trace_key_pem}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Celery Worker for video processing
+  celery:
+    build: .
+    command: celery -A backend.main.celery_app worker --loglevel=info
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_UPLOAD_BUCKET=${S3_UPLOAD_BUCKET}
+      - S3_OUTPUT_BUCKET=${S3_OUTPUT_BUCKET}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - trace_key_pem=${trace_key_pem}
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # Redis for Celery message queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:

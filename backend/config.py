@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     S3_UPLOAD_BUCKET: str | None = None
     S3_OUTPUT_BUCKET: str | None = None
     DATABASE_URL: str = "postgresql://localhost:5432/trace"
+    
+    # Redis for Celery
+    CELERY_BROKER_URL: str | None = None
+    CELERY_RESULT_BACKEND: str | None = None
+    
+    # PEM Key (from Vercel env or local file)
+    trace_key_pem: str | None = None
 
     class Config:
         env_file = ".env"
