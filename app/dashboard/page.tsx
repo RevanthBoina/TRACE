@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { type RegisteredVideo } from "@/components/dashboard/video-card"
 import { DashboardClient } from "@/components/dashboard/dashboard-client"
+import { BackendStats } from "@/components/dashboard/backend-stats"
 
 export const metadata: Metadata = {
   title: "TRACE — Dashboard",
@@ -62,7 +63,12 @@ export default function DashboardPage() {
           <h1 className="mt-1 text-2xl font-semibold text-foreground text-balance">Your registered videos</h1>
         </header>
 
-        <DashboardClient videos={videos} />
+        {/* Backend Analytics Stats */}
+        <BackendStats />
+
+        <div className="mt-6">
+          <DashboardClient videos={videos} />
+        </div>
       </div>
     </main>
   )

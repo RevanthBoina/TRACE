@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { UploadCloud, FileVideo, Download, CheckCircle2, Loader2, AlertCircle, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { trackUploadStarted, trackUploadSuccess, trackWatermarkCompleted, trackDownloadStarted, trackError } from "@/lib/analytics"
 
 // Backend API URL - update this to your deployed EC2/backend URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
@@ -61,6 +62,8 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
     if (status === "done") onReveal()
   }, [status, onReveal])
 
+  const processingStartRef = useRef<number>(Date.now())
+
   const pollJobStatus = useCallback(async (id: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/job/${id}`)
@@ -77,7 +80,18 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
         if (pollIntervalRef.current) {
           clearInterval(pollIntervalRef.current)
         }
+        // Track watermark completion
+        trackWatermarkCompleted({
+          jobId: id,
+          processingTimeMs: Date.now() - processingStartRef.current,
+          outputSize: 0, // Would need to get from backend
+        })
       } else if (data.status === "failed") {
+        trackError({
+          errorType: "watermark_failed",
+          errorMessage: data.error || "Processing failed",
+          context: "watermark_processing",
+        })
         setStatus("error")
         setError(data.error || "Processing failed")
         if (pollIntervalRef.current) {
@@ -100,6 +114,13 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
     setStep(0)
     setStatus("uploading")
 
+    const uploadStartTime = Date.now()
+    trackUploadStarted({
+      filename: file.name,
+      fileSize: file.size,
+      fileType: file.type || "unknown",
+    })
+
     const formData = new FormData()
     formData.append("file", file)
 
@@ -121,6 +142,13 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
       setProgress(30)
       setStep(1)
 
+      // Track upload success
+      trackUploadSuccess({
+        filename: file.name,
+        jobId: data.job_id,
+        processingTimeMs: Date.now() - uploadStartTime,
+      })
+
       if (data.status === "duplicate") {
         // File already processed
         setStatus("already-protected")
@@ -137,6 +165,11 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
       }, 2000) // Poll every 2 seconds
 
     } catch (err) {
+      trackError({
+        errorType: "upload_error",
+        errorMessage: err instanceof Error ? err.message : "Upload failed",
+        context: "video_upload",
+      })
       setStatus("error")
       setError(err instanceof Error ? err.message : "Upload failed")
     }
@@ -296,7 +329,15 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
       {/* Done state - download button */}
       {isDone && (
         <div className="flex items-center gap-2">
-          <Button className="flex-1 gap-2" onClick={onReveal}>
+          <Button 
+            className="flex-1 gap-2" 
+            onClick={() => {
+              if (outputKey) {
+                trackDownloadStarted({ jobId: jobId || "", filename: outputKey })
+              }
+              onReveal()
+            }}
+          >
             <Download className="size-4" aria-hidden="true" />
             Download watermarked video
           </Button>
