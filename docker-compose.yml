@@ -1,5 +1,4 @@
 # TRACE Backend - Docker Compose for 24/7 deployment
-version: '3.8'
 
 services:
   # FastAPI Backend
