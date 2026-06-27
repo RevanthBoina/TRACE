@@ -19,7 +19,11 @@ from celery import Celery
 from celery.result import AsyncResult
 
 from backend.config import settings
-from backend.database import get_db, check_duplicate, save_upload, get_upload_by_id, update_upload_status, Upload
+from backend.database import (
+    get_db, check_duplicate, save_upload, get_upload_by_id, update_upload_status, Upload,
+    get_all_registered_videos, get_infringing_links, save_registered_video,
+    save_infringing_link, mark_dmca_filed, RegisteredVideo, InfringingLink
+)
 from sqlalchemy.orm import Session
 
 # Setup logging
@@ -351,3 +355,119 @@ async def health_check():
 async def get_metrics():
     """Get backend metrics for monitoring."""
     return metrics.get_metrics()
+
+
+# ============================================
+# INFRINGEMENT DETECTION DASHBOARD ENDPOINTS
+# ============================================
+
+class InfringingLinkResponse(BaseModel):
+    """Response model for an infringing link."""
+    id: str
+    url: str
+    confidence: int
+    detected_at: str
+    dmca_filed: bool
+
+
+class RegisteredVideoResponse(BaseModel):
+    """Response model for a registered video with its infringing links."""
+    id: str
+    job_id: str
+    title: str
+    platform: str
+    canonical_url: str
+    status: str
+    failure_reason: Optional[str] = None
+    last_scanned: Optional[str] = None
+    created_at: str
+    infringing_links: list[InfringingLinkResponse] = []
+
+
+class RegisterVideoRequest(BaseModel):
+    """Request model for registering a video for monitoring."""
+    job_id: str
+    title: str
+    platform: str
+    canonical_url: str
+
+
+class ReportInfringementRequest(BaseModel):
+    """Request model for reporting an infringing link."""
+    registered_video_id: str
+    url: str
+    confidence: int
+
+
+@app.get("/dashboard", response_model=list[RegisteredVideoResponse])
+async def get_dashboard(db: Session = Depends(get_db)):
+    """Get all registered videos with their infringing links for the dashboard."""
+    videos = get_all_registered_videos(db)
+    result = []
+    for video in videos:
+        links = get_infringing_links(db, video.id)
+        result.append(RegisteredVideoResponse(
+            id=str(video.id),
+            job_id=video.job_id,
+            title=video.title,
+            platform=video.platform,
+            canonical_url=video.canonical_url,
+            status=video.status,
+            failure_reason=video.failure_reason,
+            last_scanned=video.last_scanned.isoformat() if video.last_scanned else None,
+            created_at=video.created_at.isoformat(),
+            infringing_links=[
+                InfringingLinkResponse(
+                    id=str(l.id),
+                    url=l.url,
+                    confidence=l.confidence,
+                    detected_at=l.detected_at.isoformat(),
+                    dmca_filed=l.dmca_filed,
+                )
+                for l in links
+            ]
+        ))
+    return result
+
+
+@app.post("/dashboard/register", response_model=RegisteredVideoResponse)
+async def register_video(payload: RegisterVideoRequest, db: Session = Depends(get_db)):
+    """Register a video URL for infringement monitoring."""
+    video = save_registered_video(db, payload.job_id, payload.title, payload.platform, payload.canonical_url)
+    logger.info(f"Video registered for monitoring: {video.id}")
+    return RegisteredVideoResponse(
+        id=str(video.id),
+        job_id=video.job_id,
+        title=video.title,
+        platform=video.platform,
+        canonical_url=video.canonical_url,
+        status=video.status,
+        created_at=video.created_at.isoformat(),
+        infringing_links=[]
+    )
+
+
+@app.post("/dashboard/report", response_model=InfringingLinkResponse)
+async def report_infringement(payload: ReportInfringementRequest, db: Session = Depends(get_db)):
+    """Report a detected infringing link for a registered video."""
+    import uuid as uuid_module
+    link = save_infringing_link(db, uuid_module.UUID(payload.registered_video_id), payload.url, payload.confidence)
+    logger.info(f"Infringing link reported: {link.id} for video {payload.registered_video_id}")
+    return InfringingLinkResponse(
+        id=str(link.id),
+        url=link.url,
+        confidence=link.confidence,
+        detected_at=link.detected_at.isoformat(),
+        dmca_filed=link.dmca_filed,
+    )
+
+
+@app.post("/dashboard/dmca/{link_id}")
+async def file_dmca(link_id: str, db: Session = Depends(get_db)):
+    """Mark an infringing link as DMCA filed."""
+    import uuid as uuid_module
+    link = mark_dmca_filed(db, uuid_module.UUID(link_id))
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    logger.info(f"DMCA filed for link: {link_id}")
+    return {"status": "dmca_filed", "link_id": link_id}

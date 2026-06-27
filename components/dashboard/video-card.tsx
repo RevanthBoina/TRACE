@@ -12,6 +12,7 @@ export type InfringingLink = {
   url: string
   detectedAt: string
   confidence: number
+  dmcaFiled?: boolean
 }
 
 export type RegisteredVideo = {
@@ -97,14 +98,18 @@ export function VideoCard({ video }: { video: RegisteredVideo }) {
                 <span className="font-medium text-amber-400">{link.confidence}% match</span>
                 <span className="block text-muted-foreground">{link.detectedAt}</span>
               </div>
-              <a
-                href={DMCA_URL[video.platform]}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "shrink-0")}
-              >
-                File DMCA
-              </a>
+              {link.dmcaFiled ? (
+                <span className="shrink-0 rounded px-2 py-1 text-xs font-medium bg-muted text-muted-foreground">DMCA Filed</span>
+              ) : (
+                <a
+                  href={DMCA_URL[video.platform]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "shrink-0")}
+                >
+                  File DMCA
+                </a>
+              )}
             </li>
           ))}
         </ul>
