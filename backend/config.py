@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # PEM Key (from Vercel env or local file)
     trace_key_pem: str | None = None
 
+    # CORS — comma-separated list of allowed origins
+    ALLOWED_ORIGINS: str = "http://localhost:3000"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -140,12 +140,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware — origins controlled via ALLOWED_ORIGINS env var
+_allowed_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for API access
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -194,6 +195,12 @@ async def upload_video(
     # Read file content
     content = await file.read()
     file_size = len(content)
+
+    # Server-side size limit: 2 GB
+    MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+    if file_size > MAX_UPLOAD_BYTES:
+        metrics.increment("upload_errors_too_large")
+        raise HTTPException(status_code=413, detail="File exceeds the 2 GB limit")
     metrics.increment("upload_bytes_total", file_size)
 
     # Compute SHA-256 hash
