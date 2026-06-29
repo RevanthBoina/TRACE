@@ -46,6 +46,24 @@ export function VideoCard({ video }: { video: RegisteredVideo }) {
   const isActive = video.status === "Active"
   const Icon = PLATFORM_ICON[video.platform]
 
+  const handleFileDMCA = async (linkId: string, dmcaUrl: string) => {
+    try {
+      await fetch(`/api/dashboard/dmca/${linkId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          link_id: linkId,
+          platform: video.platform,
+          dmca_url: dmcaUrl,
+        }),
+      })
+      // Open the external DMCA form in a new tab
+      window.open(dmcaUrl, "_blank", "noopener,noreferrer")
+    } catch (err) {
+      console.error("Failed to record DMCA filing:", err)
+    }
+  }
+
   return (
     <article className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
       {/* Already-protected banner */}
@@ -97,14 +115,12 @@ export function VideoCard({ video }: { video: RegisteredVideo }) {
                 <span className="font-medium text-amber-400">{link.confidence}% match</span>
                 <span className="block text-muted-foreground">{link.detectedAt}</span>
               </div>
-              <a
-                href={DMCA_URL[video.platform]}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => handleFileDMCA(link.id, DMCA_URL[video.platform])}
                 className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "shrink-0")}
               >
                 File DMCA
-              </a>
+              </button>
             </li>
           ))}
         </ul>

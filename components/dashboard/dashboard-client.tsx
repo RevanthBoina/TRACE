@@ -1,18 +1,68 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { VideoCard, type RegisteredVideo } from "@/components/dashboard/video-card"
+import { VideoCard, type RegisteredVideo, type InfringingLink } from "@/components/dashboard/video-card"
 import { buttonVariants } from "@/components/ui/button"
-import { UploadCloud } from "lucide-react"
+import { UploadCloud, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type Filter = "All" | "Active" | "Matches" | "Failed"
 
 const FILTERS: Filter[] = ["All", "Active", "Matches", "Failed"]
 
-export function DashboardClient({ videos }: { videos: RegisteredVideo[] }) {
+interface ApiVideo {
+  id: string
+  title: string
+  platform: string
+  status: string
+  last_scanned?: string
+  already_protected?: boolean
+  failure_reason?: string
+  infringing_links: {
+    id: string
+    url: string
+    detected_at: string
+    confidence: number
+  }[]
+}
+
+export function DashboardClient() {
+  const [videos, setVideos] = useState<RegisteredVideo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>("All")
+
+  useEffect(() => {
+    async function fetchDashboard() {
+      try {
+        const res = await fetch("/api/dashboard")
+        if (!res.ok) throw new Error("Failed to load dashboard")
+        const data: ApiVideo[] = await res.json()
+        const mapped: RegisteredVideo[] = data.map((v) => ({
+          id: v.id,
+          title: v.title,
+          platform: v.platform as RegisteredVideo["platform"],
+          status: v.status as "Active" | "Failed",
+          lastScanned: v.last_scanned || "Never",
+          alreadyProtected: v.already_protected,
+          failureReason: v.failure_reason,
+          infringingLinks: v.infringing_links.map((l) => ({
+            id: l.id,
+            url: l.url,
+            detectedAt: l.detected_at,
+            confidence: Math.round(l.confidence),
+          })),
+        }))
+        setVideos(mapped)
+      } catch (err) {
+        setError("Failed to load dashboard data")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchDashboard()
+  }, [])
 
   const activeCount = videos.filter((v) => v.status === "Active").length
   const infringingCount = videos.reduce((sum, v) => sum + v.infringingLinks.length, 0)
@@ -35,6 +85,26 @@ export function DashboardClient({ videos }: { videos: RegisteredVideo[] }) {
     { label: "Active", value: activeCount, tone: "text-emerald-400" },
     { label: "Infringing copies", value: infringingCount, tone: "text-red-400" },
   ]
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-16">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-red-500/30 bg-red-500/10 px-6 py-16 text-center">
+        <p className="text-sm text-red-400">{error}</p>
+        <button onClick={() => window.location.reload()} className={buttonVariants({ variant: "outline" })}>
+          Retry
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">

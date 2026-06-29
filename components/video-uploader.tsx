@@ -23,6 +23,8 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
   const [fileName, setFileName] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Reveal the registration panel as soon as a protected copy is available
@@ -76,6 +78,7 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
         // Poll for watermark completion
         setStatus("processing")
         setStep(0)
+        setCurrentJobId(data.job_id)
         let stepIdx = 0
         const stepTimer = setInterval(() => {
           stepIdx = Math.min(stepIdx + 1, PROCESSING_STEPS.length - 1)
@@ -135,7 +138,24 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
     setStep(0)
     setFileName(null)
     setError(null)
+    setCurrentJobId(null)
     if (inputRef.current) inputRef.current.value = ""
+  }
+
+  const handleDownload = async () => {
+    if (!currentJobId) return
+    setIsDownloading(true)
+    try {
+      const res = await fetch(`/api/download/${currentJobId}`)
+      if (!res.ok) throw new Error("Failed to get download URL")
+      const data = await res.json()
+      // Redirect to presigned S3 URL for download
+      window.location.href = data.download_url
+    } catch (err) {
+      setError("Failed to download. Please try again.")
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   const isProtected = status === "already-protected"
@@ -236,9 +256,9 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
 
       {status === "done" && (
         <div className="flex items-center gap-2">
-          <Button className="flex-1 gap-2" onClick={onReveal}>
+          <Button className="flex-1 gap-2" onClick={handleDownload} disabled={isDownloading}>
             <Download className="size-4" aria-hidden="true" />
-            Download watermarked video
+            {isDownloading ? "Preparing download..." : "Download watermarked video"}
           </Button>
           <Button variant="outline" onClick={reset}>
             New upload
