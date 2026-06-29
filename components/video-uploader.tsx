@@ -60,7 +60,7 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
     formData.append("file", file)
 
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", "http://localhost:8000/upload")
+    xhr.open("POST", "/api/upload")
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100))
@@ -84,7 +84,7 @@ export function VideoUploader({ onReveal }: { onReveal: () => void }) {
 
         const poll = setInterval(async () => {
           try {
-            const res = await fetch(`http://localhost:8000/status/${data.job_id}`)
+            const res = await fetch(`/api/job/${data.job_id}`)
             const status = await res.json()
             if (status.status === "completed") {
               clearInterval(poll)
